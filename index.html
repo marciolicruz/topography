@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Calculadora Topográfica profissional para cálculo de poligonal acumulada por azimute ou ângulo horário (ré), com cálculo de erro de fechamento e desenho em tempo real.">
+    <title>Calculadora Topográfica - Poligonal & Fechamento</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar lateral esquerda -->
+        <aside class="sidebar">
+            <header class="app-header">
+                <div class="logo-area">
+                    <svg class="logo-icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="2" x2="12" y2="22"></line>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                    </svg>
+                    <h1>Calculadora Topográfica</h1>
+                </div>
+                <div class="credits">
+                    <p>Desenvolvido pelo</p>
+                    <strong>Prof. Marcio Cruz</strong>
+                    <span>marciolicruz@gmail.com</span>
+                </div>
+            </header>
+
+            <div class="control-sections">
+                <!-- Seção 1: Origem -->
+                <section class="control-card" aria-labelledby="title-origem">
+                    <h2 id="title-origem"><span class="number-badge">1</span> Ponto de Partida</h2>
+                    <div class="form-group">
+                        <label for="txt-start-name">Nome do Ponto</label>
+                        <input type="text" id="txt-start-name" value="P0" placeholder="Ex: P0">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="txt-start-x">Coordenada X (Este)</label>
+                            <input type="text" id="txt-start-x" value="0.000">
+                        </div>
+                        <div class="form-group">
+                            <label for="txt-start-y">Coordenada Y (Norte)</label>
+                            <input type="text" id="txt-start-y" value="0.000">
+                        </div>
+                    </div>
+                    <button id="btn-update-start" class="btn btn-secondary">Atualizar Origem</button>
+                </section>
+
+                <!-- Seção 2: Nova Visada -->
+                <section class="control-card" aria-labelledby="title-visada">
+                    <h2 id="title-visada"><span class="number-badge">2</span> Nova Visada</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Estação (De)</label>
+                            <div id="lbl-from-point" class="read-only-val">P0</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="txt-to-point">Vante (Para)</label>
+                            <input type="text" id="txt-to-point" value="P1">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sel-angle-type">Tipo de Ângulo</label>
+                        <select id="sel-angle-type" disabled>
+                            <option value="azimuth">Azimute Direto (Norte)</option>
+                            <option value="angle" selected>Ângulo Horário (Ré)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="txt-distance">Distância Horizontal (m)</label>
+                        <input type="text" id="txt-distance" placeholder="Ex: 124.52" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Ângulo (Graus, Minutos, Segundos)</label>
+                        <div class="angle-inputs">
+                            <input type="text" id="txt-degrees" value="0" placeholder="°">
+                            <input type="number" id="num-minutes" min="0" max="59" value="0" placeholder="'">
+                            <input type="text" id="txt-seconds" value="0.0" placeholder="&quot;">
+                        </div>
+                    </div>
+
+                    <button id="btn-add-point" class="btn btn-primary">Adicionar Ponto</button>
+                </section>
+
+                <!-- Seção 3: Operações -->
+                <section class="control-card" aria-labelledby="title-operacoes">
+                    <h2 id="title-operacoes">Operações</h2>
+                    <div class="ops-grid">
+                        <button id="btn-remove-last" class="btn btn-danger">Desfazer Último</button>
+                        <button id="btn-reset" class="btn btn-muted">Limpar Tudo</button>
+                        <button id="btn-export" class="btn btn-success">Exportar CSV</button>
+                    </div>
+                </section>
+            </div>
+        </aside>
+
+        <!-- Main Workspace contendo o desenho, tabela e fechamento -->
+        <main class="main-workspace">
+            <!-- Área do Gráfico -->
+            <section class="workspace-card canvas-section" aria-labelledby="title-grafico">
+                <div class="card-header">
+                    <h2 id="title-grafico">Visualização Gráfica do Trajeto</h2>
+                    <div class="canvas-controls">
+                        <button id="btn-zoom-in" title="Aumentar Zoom" aria-label="Aumentar Zoom">+</button>
+                        <button id="btn-zoom-out" title="Diminuir Zoom" aria-label="Diminuir Zoom">-</button>
+                        <button id="btn-zoom-reset" title="Centralizar Desenho" aria-label="Centralizar Desenho">Reset</button>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="topo-canvas"></canvas>
+                </div>
+            </section>
+
+            <!-- Área da Tabela -->
+            <section class="workspace-card table-section" aria-labelledby="title-tabela">
+                <h2 id="title-tabela" class="sr-only">Tabela de Coordenadas</h2>
+                <div class="table-container">
+                    <table id="tbl-coordinates">
+                        <thead>
+                            <tr>
+                                <th>De</th>
+                                <th>Para</th>
+                                <th>Distância</th>
+                                <th>Ângulo Lido</th>
+                                <th>Azimute Calc.</th>
+                                <th>ΔX (m)</th>
+                                <th>ΔY (m)</th>
+                                <th>Coordenada X (m)</th>
+                                <th>Coordenada Y (m)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbl-body">
+                            <!-- Inserido dinamicamente via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Dashboard de Erro de Fechamento -->
+            <section class="workspace-card closure-dashboard" aria-labelledby="title-fechamento">
+                <div class="closure-header">
+                    <h2 id="title-fechamento">Cálculo de Erro de Fechamento</h2>
+                    <div class="closure-settings">
+                        <label for="txt-expected-x">X Esperado:</label>
+                        <input type="text" id="txt-expected-x" value="0.000">
+                        <label for="txt-expected-y">Y Esperado:</label>
+                        <input type="text" id="txt-expected-y" value="0.000">
+                        <span class="settings-hint">(Edite para poligonais abertas)</span>
+                    </div>
+                </div>
+
+                <div class="closure-cards">
+                    <div class="closure-card">
+                        <h3>Perímetro Total</h3>
+                        <div id="val-perimeter" class="closure-val">-</div>
+                    </div>
+                    <div class="closure-card">
+                        <h3>Erro em X (dx)</h3>
+                        <div id="val-err-x" class="closure-val err-text">-</div>
+                    </div>
+                    <div class="closure-card">
+                        <h3>Erro em Y (dy)</h3>
+                        <div id="val-err-y" class="closure-val err-text">-</div>
+                    </div>
+                    <div class="closure-card">
+                        <h3>Erro Linear</h3>
+                        <div id="val-err-linear" class="closure-val warning-text">-</div>
+                    </div>
+                    <div class="closure-card precision-card">
+                        <h3>Precisão Obtida</h3>
+                        <div id="val-precision" class="closure-val precision-text">-</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>

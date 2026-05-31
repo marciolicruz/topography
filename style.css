@@ -1,0 +1,654 @@
+/* style.css - Design System da Calculadora Topográfica Web */
+
+/* ==========================================================================
+   Design Tokens & Variaveis
+   ========================================================================== */
+:root {
+    --bg-app: #121218;
+    --bg-card: #1c1c27;
+    --bg-card-hover: #222232;
+    --bg-input: #262636;
+    --bg-input-focus: #2d2d42;
+    
+    --color-text: #e2e2e9;
+    --color-text-muted: #9595a8;
+    
+    --primary: #6c5ce7;
+    --primary-hover: #7d70eb;
+    --secondary: #4ecdc4;
+    --secondary-hover: #61d5cd;
+    --danger: #ff7675;
+    --danger-hover: #ff8a89;
+    --success: #2ecc71;
+    --success-hover: #40d47e;
+    --warning: #ffe66d;
+    --muted: #4a4a5a;
+    --muted-hover: #58586c;
+    
+    --border-color: #2d2d3f;
+    --border-color-focus: #4e4d6f;
+    
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    
+    --shadow-premium: 0 8px 30px rgba(0, 0, 0, 0.4);
+    --shadow-accent: 0 4px 15px rgba(108, 92, 231, 0.3);
+}
+
+/* ==========================================================================
+   Resets & Base
+   ========================================================================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-app);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar Personalizada */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-app);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+}
+
+/* ==========================================================================
+   Layout Principal (Responsivo)
+   ========================================================================== */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar Esquerda */
+.sidebar {
+    width: 340px;
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--border-color);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    z-index: 10;
+}
+
+/* Workspace Central */
+.main-workspace {
+    flex: 1;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* ==========================================================================
+   Cabeçalho
+   ========================================================================== */
+.app-header {
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 20px;
+}
+
+.logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.logo-icon {
+    color: var(--primary);
+    filter: drop-shadow(0 0 6px rgba(108, 92, 231, 0.4));
+}
+
+.logo-area h1 {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+}
+
+.credits {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-left: 3px solid var(--primary);
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+}
+
+.credits p {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-text-muted);
+}
+
+.credits strong {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    color: #fff;
+    display: block;
+    margin: 2px 0;
+}
+
+.credits span {
+    font-size: 11px;
+    color: var(--secondary);
+}
+
+/* ==========================================================================
+   Componentes de Formulário & Cards de Controle
+   ========================================================================== */
+.control-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.control-card {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    transition: border-color 0.2s ease;
+}
+
+.control-card:hover {
+    border-color: rgba(108, 92, 231, 0.25);
+}
+
+.control-card h2 {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 14px;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.number-badge {
+    background-color: var(--border-color);
+    color: var(--color-text);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.form-row .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    margin-bottom: 5px;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+    width: 100%;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: #fff;
+    padding: 8px 12px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+    outline: none;
+    border-color: var(--border-color-focus);
+    background-color: var(--bg-input-focus);
+    box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.15);
+}
+
+select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.read-only-val {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    color: var(--secondary);
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.angle-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+}
+
+.angle-inputs input {
+    text-align: center;
+}
+
+/* Botões */
+.btn {
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    color: #fff;
+    box-shadow: var(--shadow-accent);
+}
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: var(--border-color);
+    color: #fff;
+}
+.btn-secondary:hover {
+    background-color: var(--muted);
+}
+
+.btn-danger {
+    background-color: rgba(255, 118, 117, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(255, 118, 117, 0.3);
+}
+.btn-danger:hover {
+    background-color: var(--danger);
+    color: #fff;
+}
+
+.btn-muted {
+    background-color: rgba(255, 255, 255, 0.03);
+    color: var(--color-text-muted);
+    border: 1px solid var(--border-color);
+}
+.btn-muted:hover {
+    background-color: var(--muted);
+    color: #fff;
+}
+
+.btn-success {
+    background-color: rgba(46, 204, 113, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(46, 204, 113, 0.3);
+}
+.btn-success:hover {
+    background-color: var(--success);
+    color: #fff;
+}
+
+.ops-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+/* ==========================================================================
+   Workspace Cards (Canvas, Tabela, Fechamento)
+   ========================================================================== */
+.workspace-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--shadow-premium);
+}
+
+/* 1. Canvas Section */
+.canvas-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-header h2 {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.canvas-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.canvas-controls button {
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--color-text);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.canvas-controls button:hover {
+    background-color: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.canvas-container {
+    width: 100%;
+    height: 380px;
+    background-color: #0b0b10;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    cursor: grab;
+}
+
+.canvas-container:active {
+    cursor: grabbing;
+}
+
+#topo-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* 2. Tabela Section */
+.table-section {
+    padding: 0;
+    overflow: hidden;
+}
+
+.table-container {
+    overflow-x: auto;
+    width: 100%;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 13px;
+}
+
+th, td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background-color: rgba(255, 255, 255, 0.02);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Rótulos coloridos na tabela */
+.angle-tag-az, .angle-tag-hz {
+    font-weight: 700;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 4px;
+}
+
+.angle-tag-az {
+    background-color: rgba(0, 210, 210, 0.15);
+    color: var(--secondary);
+}
+
+.angle-tag-hz {
+    background-color: rgba(108, 92, 231, 0.15);
+    color: var(--primary);
+}
+
+/* 3. Closure Dashboard */
+.closure-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    border-color: var(--primary);
+}
+
+.closure-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.closure-header h2 {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.closure-settings {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.closure-settings label {
+    margin-bottom: 0;
+    font-weight: 600;
+}
+
+.closure-settings input {
+    width: 80px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.settings-hint {
+    font-size: 10px;
+    font-style: italic;
+    color: var(--color-text-muted);
+}
+
+.closure-cards {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+.closure-card {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.closure-card h3 {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+}
+
+.closure-val {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.precision-card {
+    grid-column: span 1;
+}
+
+/* Cores de status nos valores */
+.err-text {
+    color: var(--danger) !important;
+}
+
+.warning-text {
+    color: var(--warning) !important;
+}
+
+.precision-text {
+    color: var(--secondary) !important;
+    font-size: 14px;
+}
+
+/* Classes utilitárias acessíveis */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==========================================================================
+   Media Queries (Responsivo)
+   ========================================================================== */
+@media (max-width: 1024px) {
+    .app-container {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .control-sections {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+    
+    .ops-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .control-sections {
+        grid-template-columns: 1fr;
+    }
+    
+    .ops-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .closure-cards {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .closure-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
