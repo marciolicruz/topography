@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Calculadora Topográfica profissional para cálculo de poligonal acumulada por azimute ou ângulo horário (ré), com cálculo de erro de fechamento e desenho em tempo real.">
-    <title>Calculadora Topográfica - Poligonal & Fechamento</title>
+    <meta name="description" content="Calculadora Topográfica profissional para cálculo de planimetria (poligonal, erro de fechamento) e altimetria (pontos irradiados, triangulação TIN e curvas de nível em tempo real).">
+    <title>Calculadora Topográfica - Planimetria & Altimetria</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,84 +32,181 @@
                 </div>
             </header>
 
-            <div class="control-sections">
-                <!-- Seção 1: Origem -->
-                <section class="control-card" aria-labelledby="title-origem">
-                    <h2 id="title-origem"><span class="number-badge">1</span> Ponto de Partida</h2>
-                    <div class="form-group">
-                        <label for="txt-start-name">Nome do Ponto</label>
-                        <input type="text" id="txt-start-name" value="P0" placeholder="Ex: P0">
-                    </div>
-                    <div class="form-row">
+            <!-- Sistema de Navegação em Abas -->
+            <nav class="tab-navigation">
+                <button class="tab-btn active" data-tab="planimetria">Planimetria</button>
+                <button class="tab-btn" data-tab="altimetria">Altimetria</button>
+            </nav>
+
+            <!-- CONTEÚDO DA SIDEBAR: PLANIMETRIA -->
+            <div class="sidebar-tab-content active" id="sidebar-planimetria">
+                <div class="control-sections">
+                    <!-- Seção 1: Origem -->
+                    <section class="control-card" aria-labelledby="title-origem">
+                        <h2 id="title-origem"><span class="number-badge">1</span> Ponto de Partida</h2>
                         <div class="form-group">
-                            <label for="txt-start-x">Coordenada X (Este)</label>
-                            <input type="text" id="txt-start-x" value="0.000">
+                            <label for="txt-start-name">Nome do Ponto</label>
+                            <input type="text" id="txt-start-name" value="P0" placeholder="Ex: P0">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="txt-start-x">Coordenada X (Este)</label>
+                                <input type="text" id="txt-start-x" value="0.000">
+                            </div>
+                            <div class="form-group">
+                                <label for="txt-start-y">Coordenada Y (Norte)</label>
+                                <input type="text" id="txt-start-y" value="0.000">
+                            </div>
+                        </div>
+                        <button id="btn-update-start" class="btn btn-secondary">Atualizar Origem</button>
+                    </section>
+
+                    <!-- Seção 2: Nova Visada -->
+                    <section class="control-card" aria-labelledby="title-visada">
+                        <h2 id="title-visada"><span class="number-badge">2</span> Nova Visada</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Estação (De)</label>
+                                <div id="lbl-from-point" class="read-only-val">P0</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="txt-to-point">Vante (Para)</label>
+                                <input type="text" id="txt-to-point" value="P1">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="sel-angle-type">Tipo de Ângulo</label>
+                            <select id="sel-angle-type" disabled>
+                                <option value="azimuth">Azimute Direto (Norte)</option>
+                                <option value="angle" selected>Ângulo Horário (Ré)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="txt-distance">Distância Horizontal (m)</label>
+                            <input type="text" id="txt-distance" placeholder="Ex: 124.52" autocomplete="off">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Ângulo (Graus, Minutos, Segundos)</label>
+                            <div class="angle-inputs">
+                                <input type="text" id="txt-degrees" value="0" placeholder="°">
+                                <input type="number" id="num-minutes" min="0" max="59" value="0" placeholder="'">
+                                <input type="text" id="txt-seconds" value="0.0" placeholder="&quot;">
+                            </div>
+                        </div>
+
+                        <button id="btn-add-point" class="btn btn-primary">Adicionar Ponto</button>
+                    </section>
+
+                    <!-- Seção 3: Operações -->
+                    <section class="control-card" aria-labelledby="title-operacoes">
+                        <h2 id="title-operacoes">Operações</h2>
+                        <div class="ops-grid">
+                            <button id="btn-remove-last" class="btn btn-danger">Desfazer Último</button>
+                            <button id="btn-reset" class="btn btn-muted">Limpar Tudo</button>
+                            <button id="btn-export" class="btn btn-success">Exportar CSV</button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- CONTEÚDO DA SIDEBAR: ALTIMETRIA -->
+            <div class="sidebar-tab-content" id="sidebar-altimetria">
+                <div class="control-sections">
+                    <!-- Seção 1: Alturas da Poligonal -->
+                    <section class="control-card" aria-labelledby="title-z-poligonal">
+                        <h2 id="title-z-poligonal"><span class="number-badge">A</span> Altura da Poligonal</h2>
+                        <div class="form-group">
+                            <label for="sel-z-point">Ponto da Poligonal</label>
+                            <select id="sel-z-point">
+                                <!-- Preenchido dinamicamente com P0, P1, P2... -->
+                            </select>
                         </div>
                         <div class="form-group">
-                            <label for="txt-start-y">Coordenada Y (Norte)</label>
-                            <input type="text" id="txt-start-y" value="0.000">
+                            <label for="txt-z-value">Cota / Altura Z (m)</label>
+                            <input type="text" id="txt-z-value" value="0.000">
                         </div>
-                    </div>
-                    <button id="btn-update-start" class="btn btn-secondary">Atualizar Origem</button>
-                </section>
+                        <button id="btn-update-z" class="btn btn-secondary">Atualizar Altura Z</button>
+                    </section>
 
-                <!-- Seção 2: Nova Visada -->
-                <section class="control-card" aria-labelledby="title-visada">
-                    <h2 id="title-visada"><span class="number-badge">2</span> Nova Visada</h2>
-                    <div class="form-row">
+                    <!-- Seção 2: Pontos Irradiados / Cotados -->
+                    <section class="control-card" aria-labelledby="title-irradiados">
+                        <h2 id="title-irradiados"><span class="number-badge">B</span> Ponto Cotado (Irradiado)</h2>
                         <div class="form-group">
-                            <label>Estação (De)</label>
-                            <div id="lbl-from-point" class="read-only-val">P0</div>
+                            <label for="txt-irr-name">Nome do Ponto</label>
+                            <input type="text" id="txt-irr-name" value="I1" placeholder="Ex: I1">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="txt-irr-x">Coordenada X (Este)</label>
+                                <input type="text" id="txt-irr-x" placeholder="Ex: 50.25">
+                            </div>
+                            <div class="form-group">
+                                <label for="txt-irr-y">Coordenada Y (Norte)</label>
+                                <input type="text" id="txt-irr-y" placeholder="Ex: 35.80">
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label for="txt-to-point">Vante (Para)</label>
-                            <input type="text" id="txt-to-point" value="P1">
+                            <label for="txt-irr-z">Cota / Altura Z (m)</label>
+                            <input type="text" id="txt-irr-z" placeholder="Ex: 102.45">
                         </div>
-                    </div>
+                        <button id="btn-add-irr" class="btn btn-primary">Adicionar Ponto Cotado</button>
+                    </section>
 
-                    <div class="form-group">
-                        <label for="sel-angle-type">Tipo de Ângulo</label>
-                        <select id="sel-angle-type" disabled>
-                            <option value="azimuth">Azimute Direto (Norte)</option>
-                            <option value="angle" selected>Ângulo Horário (Ré)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="txt-distance">Distância Horizontal (m)</label>
-                        <input type="text" id="txt-distance" placeholder="Ex: 124.52" autocomplete="off">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Ângulo (Graus, Minutos, Segundos)</label>
-                        <div class="angle-inputs">
-                            <input type="text" id="txt-degrees" value="0" placeholder="°">
-                            <input type="number" id="num-minutes" min="0" max="59" value="0" placeholder="'">
-                            <input type="text" id="txt-seconds" value="0.0" placeholder="&quot;">
+                    <!-- Seção 3: Configurações de Curva de Nível -->
+                    <section class="control-card" aria-labelledby="title-curvas-config">
+                        <h2 id="title-curvas-config"><span class="number-badge">C</span> Curvas de Nível</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="txt-contour-interval">Equidistância (m)</label>
+                                <input type="text" id="txt-contour-interval" value="1.0">
+                            </div>
+                            <div class="form-group">
+                                <label for="num-master-interval">Mestra a cada</label>
+                                <input type="number" id="num-master-interval" min="1" max="10" value="5">
+                            </div>
                         </div>
-                    </div>
 
-                    <button id="btn-add-point" class="btn btn-primary">Adicionar Ponto</button>
-                </section>
+                        <!-- Checkboxes de exibição -->
+                        <div class="options-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="chk-show-contours" checked>
+                                <span class="checkmark"></span>
+                                Mostrar Curvas de Nível
+                            </label>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="chk-show-tin" checked>
+                                <span class="checkmark"></span>
+                                Mostrar Triangulação (TIN)
+                            </label>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="chk-show-labels" checked>
+                                <span class="checkmark"></span>
+                                Mostrar Cotas nos Pontos
+                            </label>
+                        </div>
+                    </section>
 
-                <!-- Seção 3: Operações -->
-                <section class="control-card" aria-labelledby="title-operacoes">
-                    <h2 id="title-operacoes">Operações</h2>
-                    <div class="ops-grid">
-                        <button id="btn-remove-last" class="btn btn-danger">Desfazer Último</button>
-                        <button id="btn-reset" class="btn btn-muted">Limpar Tudo</button>
-                        <button id="btn-export" class="btn btn-success">Exportar CSV</button>
-                    </div>
-                </section>
+                    <!-- Seção 4: Operações de Altimetria -->
+                    <section class="control-card" aria-labelledby="title-ops-alt">
+                        <h2 id="title-ops-alt">Operações</h2>
+                        <div class="ops-grid">
+                            <button id="btn-remove-last-irr" class="btn btn-danger">Remover Último Cotado</button>
+                            <button id="btn-reset-alt" class="btn btn-muted">Limpar Altimetria</button>
+                        </div>
+                    </section>
+                </div>
             </div>
         </aside>
 
-        <!-- Main Workspace contendo o desenho, tabela e fechamento -->
+        <!-- Main Workspace (Compartilhado e dinâmico) -->
         <main class="main-workspace">
-            <!-- Área do Gráfico -->
+            <!-- 1. Área do Gráfico (Compartilhada: Plota poligonal ou TIN/curvas de nível) -->
             <section class="workspace-card canvas-section" aria-labelledby="title-grafico">
                 <div class="card-header">
-                    <h2 id="title-grafico">Visualização Gráfica do Trajeto</h2>
+                    <h2 id="title-grafico">Visualização Gráfica <span class="visualizer-badge" id="visualizer-mode">Planimetria</span></h2>
                     <div class="canvas-controls">
                         <button id="btn-zoom-in" title="Aumentar Zoom" aria-label="Aumentar Zoom">+</button>
                         <button id="btn-zoom-out" title="Diminuir Zoom" aria-label="Diminuir Zoom">-</button>
@@ -121,67 +218,95 @@
                 </div>
             </section>
 
-            <!-- Área da Tabela -->
-            <section class="workspace-card table-section" aria-labelledby="title-tabela">
-                <h2 id="title-tabela" class="sr-only">Tabela de Coordenadas</h2>
-                <div class="table-container">
-                    <table id="tbl-coordinates">
-                        <thead>
-                            <tr>
-                                <th>De</th>
-                                <th>Para</th>
-                                <th>Distância</th>
-                                <th>Ângulo Lido</th>
-                                <th>Azimute Calc.</th>
-                                <th>ΔX (m)</th>
-                                <th>ΔY (m)</th>
-                                <th>Coordenada X (m)</th>
-                                <th>Coordenada Y (m)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbl-body">
-                            <!-- Inserido dinamicamente via JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            <!-- CONTEÚDO DA ÁREA DE TRABALHO: PLANIMETRIA -->
+            <div class="workspace-tab-content active" id="workspace-planimetria">
+                <!-- Tabela de Planimetria -->
+                <section class="workspace-card table-section" aria-labelledby="title-tabela-plan">
+                    <h2 id="title-tabela-plan" class="sr-only">Tabela Planimétrica</h2>
+                    <div class="table-container">
+                        <table id="tbl-coordinates">
+                            <thead>
+                                <tr>
+                                    <th>De</th>
+                                    <th>Para</th>
+                                    <th>Distância (m)</th>
+                                    <th>Ângulo Lido</th>
+                                    <th>Azimute Calc.</th>
+                                    <th>ΔX (m)</th>
+                                    <th>ΔY (m)</th>
+                                    <th>Coordenada X (m)</th>
+                                    <th>Coordenada Y (m)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbl-body">
+                                <!-- Inserido dinamicamente via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
 
-            <!-- Dashboard de Erro de Fechamento -->
-            <section class="workspace-card closure-dashboard" aria-labelledby="title-fechamento">
-                <div class="closure-header">
-                    <h2 id="title-fechamento">Cálculo de Erro de Fechamento</h2>
-                    <div class="closure-settings">
-                        <label for="txt-expected-x">X Esperado:</label>
-                        <input type="text" id="txt-expected-x" value="0.000">
-                        <label for="txt-expected-y">Y Esperado:</label>
-                        <input type="text" id="txt-expected-y" value="0.000">
-                        <span class="settings-hint">(Edite para poligonais abertas)</span>
+                <!-- Dashboard de Erro de Fechamento -->
+                <section class="workspace-card closure-dashboard" aria-labelledby="title-fechamento">
+                    <div class="closure-header">
+                        <h2 id="title-fechamento">Cálculo de Erro de Fechamento</h2>
+                        <div class="closure-settings">
+                            <label for="txt-expected-x">X Esperado:</label>
+                            <input type="text" id="txt-expected-x" value="0.000">
+                            <label for="txt-expected-y">Y Esperado:</label>
+                            <input type="text" id="txt-expected-y" value="0.000">
+                            <span class="settings-hint">(Edite para poligonais abertas)</span>
+                        </div>
                     </div>
-                </div>
 
-                <div class="closure-cards">
-                    <div class="closure-card">
-                        <h3>Perímetro Total</h3>
-                        <div id="val-perimeter" class="closure-val">-</div>
+                    <div class="closure-cards">
+                        <div class="closure-card">
+                            <h3>Perímetro Total</h3>
+                            <div id="val-perimeter" class="closure-val">-</div>
+                        </div>
+                        <div class="closure-card">
+                            <h3>Erro em X (dx)</h3>
+                            <div id="val-err-x" class="closure-val err-text">-</div>
+                        </div>
+                        <div class="closure-card">
+                            <h3>Erro em Y (dy)</h3>
+                            <div id="val-err-y" class="closure-val err-text">-</div>
+                        </div>
+                        <div class="closure-card">
+                            <h3>Erro Linear</h3>
+                            <div id="val-err-linear" class="closure-val warning-text">-</div>
+                        </div>
+                        <div class="closure-card precision-card">
+                            <h3>Precisão Obtida</h3>
+                            <div id="val-precision" class="closure-val precision-text">-</div>
+                        </div>
                     </div>
-                    <div class="closure-card">
-                        <h3>Erro em X (dx)</h3>
-                        <div id="val-err-x" class="closure-val err-text">-</div>
+                </section>
+            </div>
+
+            <!-- CONTEÚDO DA ÁREA DE TRABALHO: ALTIMETRIA -->
+            <div class="workspace-tab-content" id="workspace-altimetria">
+                <!-- Tabela de Altimetria (Tabela de Pontos 3D: Poligonal + Irradiados) -->
+                <section class="workspace-card table-section" aria-labelledby="title-tabela-alt">
+                    <h2 id="title-tabela-alt" class="sr-only">Tabela Altimétrica</h2>
+                    <div class="table-container">
+                        <table id="tbl-altimetry">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Ponto</th>
+                                    <th>Tipo</th>
+                                    <th>Coordenada X (m)</th>
+                                    <th>Coordenada Y (m)</th>
+                                    <th>Altura / Cota Z (m)</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbl-alt-body">
+                                <!-- Inserido dinamicamente via JS -->
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="closure-card">
-                        <h3>Erro em Y (dy)</h3>
-                        <div id="val-err-y" class="closure-val err-text">-</div>
-                    </div>
-                    <div class="closure-card">
-                        <h3>Erro Linear</h3>
-                        <div id="val-err-linear" class="closure-val warning-text">-</div>
-                    </div>
-                    <div class="closure-card precision-card">
-                        <h3>Precisão Obtida</h3>
-                        <div id="val-precision" class="closure-val precision-text">-</div>
-                    </div>
-                </div>
-            </section>
+                </section>
+            </div>
         </main>
     </div>
 

@@ -1,10 +1,10 @@
-// app.js - Lógica Principal, Cálculos e Canvas da Calculadora Topográfica Web
+// app.js - Lógica Principal, Cálculos, Delaunay, Curvas de Nível e Canvas
 
 // ==========================================================================
 // Estruturas de Dados e Estado
 // ==========================================================================
 class TopoPoint {
-    constructor(name, x, y, fromName, distance, deg, min, sec, isAzimuth, calculatedAzimuth) {
+    constructor(name, x, y, fromName, distance, deg, min, sec, isAzimuth, calculatedAzimuth, z = 0.0) {
         this.name = name;
         this.x = x;
         this.y = y;
@@ -15,11 +15,51 @@ class TopoPoint {
         this.sec = sec;
         this.isAzimuth = isAzimuth;
         this.calculatedAzimuth = calculatedAzimuth;
+        this.z = z;
     }
 }
 
-let startPoint = new TopoPoint("P0", 0.0, 0.0, "", 0.0, 0, 0, 0.0, true, 0.0);
+class AltimetryPoint {
+    constructor(name, x, y, z) {
+        this.name = name;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+}
+
+// Classe Triângulo para o algoritmo de Bowyer-Watson (Triangulação de Delaunay)
+class Triangle {
+    constructor(p1, p2, p3) {
+        this.p1 = p1; // ponto { name, x, y, z }
+        this.p2 = p2;
+        this.p3 = p3;
+    }
+    
+    // Calcula circuncentro e raio circunscrito ao quadrado (r^2)
+    getCircumcircle() {
+        const x1 = this.p1.x, y1 = this.p1.y;
+        const x2 = this.p2.x, y2 = this.p2.y;
+        const x3 = this.p3.x, y3 = this.p3.y;
+        
+        const d = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2));
+        if (Math.abs(d) < 1e-9) {
+            return { x: 0, y: 0, r2: Infinity };
+        }
+        
+        const ux = ((x1*x1 + y1*y1) * (y2 - y3) + (x2*x2 + y2*y2) * (y3 - y1) + (x3*x3 + y3*y3) * (y1 - y2)) / d;
+        const uy = ((x1*x1 + y1*y1) * (x3 - x2) + (x2*x2 + y2*y2) * (x1 - x3) + (x3*x3 + y3*y3) * (x2 - x1)) / d;
+        
+        const r2 = (x1 - ux)*(x1 - ux) + (y1 - uy)*(y1 - uy);
+        return { x: ux, y: uy, r2: r2 };
+    }
+}
+
+// Variáveis Globais de Estado
+let startPoint = new TopoPoint("P0", 0.0, 0.0, "", 0.0, 0, 0, 0.0, true, 0.0, 0.0);
 let pointsList = [];
+let altPointsList = [];
+let activeTab = "planimetria";
 let userEditedExpected = false;
 
 // Zoom e Pan do Canvas
@@ -70,15 +110,24 @@ function saveData() {
     const data = {
         startPoint: startPoint,
         pointsList: pointsList,
+        altPointsList: altPointsList,
         userEditedExpected: userEditedExpected,
         expectedX: document.getElementById("txt-expected-x").value,
-        expectedY: document.getElementById("txt-expected-y").value
+        expectedY: document.getElementById("txt-expected-y").value,
+        activeTab: activeTab,
+        
+        // Altimetria Configs
+        contourInterval: document.getElementById("txt-contour-interval").value,
+        masterInterval: document.getElementById("num-master-interval").value,
+        showContours: document.getElementById("chk-show-contours").checked,
+        showTin: document.getElementById("chk-show-tin").checked,
+        showLabels: document.getElementById("chk-show-labels").checked
     };
-    localStorage.setItem("topography_calculator_data", JSON.stringify(data));
+    localStorage.setItem("topography_calculator_data_v2", JSON.stringify(data));
 }
 
 function loadSavedData() {
-    const saved = localStorage.getItem("topography_calculator_data");
+    const saved = localStorage.getItem("topography_calculator_data_v2");
     if (saved) {
         try {
             const data = JSON.parse(saved);
@@ -93,13 +142,19 @@ function loadSavedData() {
                     data.startPoint.min,
                     data.startPoint.sec,
                     data.startPoint.isAzimuth,
-                    data.startPoint.calculatedAzimuth
+                    data.startPoint.calculatedAzimuth,
+                    data.startPoint.z || 0.0
                 );
             }
             if (data.pointsList && Array.isArray(data.pointsList)) {
                 pointsList = data.pointsList.map(p => new TopoPoint(
                     p.name, p.x, p.y, p.fromName, p.distance,
-                    p.deg, p.min, p.sec, p.isAzimuth, p.calculatedAzimuth
+                    p.deg, p.min, p.sec, p.isAzimuth, p.calculatedAzimuth, p.z || 0.0
+                ));
+            }
+            if (data.altPointsList && Array.isArray(data.altPointsList)) {
+                altPointsList = data.altPointsList.map(p => new AltimetryPoint(
+                    p.name, p.x, p.y, p.z
                 ));
             }
             userEditedExpected = data.userEditedExpected || false;
@@ -113,10 +168,24 @@ function loadSavedData() {
                 document.getElementById("txt-expected-x").value = data.expectedX || "0.000";
                 document.getElementById("txt-expected-y").value = data.expectedY || "0.000";
             }
+
+            // Altimetria Configs
+            if (data.contourInterval) document.getElementById("txt-contour-interval").value = data.contourInterval;
+            if (data.masterInterval) document.getElementById("num-master-interval").value = data.masterInterval;
+            if (data.showContours !== undefined) document.getElementById("chk-show-contours").checked = data.showContours;
+            if (data.showTin !== undefined) document.getElementById("chk-show-tin").checked = data.showTin;
+            if (data.showLabels !== undefined) document.getElementById("chk-show-labels").checked = data.showLabels;
+
+            if (data.activeTab) {
+                activeTab = data.activeTab;
+            }
         } catch (e) {
             console.error("Erro ao ler dados salvos do localStorage", e);
         }
     }
+    
+    // Aplica a aba ativa
+    switchTab(activeTab);
 }
 
 // ==========================================================================
@@ -127,7 +196,7 @@ function parseDoubleRobust(val) {
     const normalized = val.trim().replace(",", ".");
     const parsed = parseFloat(normalized);
     if (isNaN(parsed)) {
-        throw new NumberFormatException("Formato numérico inválido");
+        throw new Error("Formato numérico inválido");
     }
     return parsed;
 }
@@ -144,7 +213,15 @@ function formatDMS(angleDecimal) {
 // Registrador de Eventos da Interface
 // ==========================================================================
 function registerEvents() {
-    // 1. Atualizar ponto de partida
+    // 1. Alternar Abas
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const targetTab = e.target.getAttribute("data-tab");
+            switchTab(targetTab);
+        });
+    });
+
+    // 2. Atualizar ponto de partida (Planimetria)
     document.getElementById("btn-update-start").addEventListener("click", () => {
         try {
             const newX = parseDoubleRobust(document.getElementById("txt-start-x").value);
@@ -177,10 +254,10 @@ function registerEvents() {
         }
     });
 
-    // 2. Adicionar nova visada
+    // 3. Adicionar nova visada (Planimetria)
     document.getElementById("btn-add-point").addEventListener("click", addPoint);
 
-    // Tecla Enter para submeter os campos
+    // Teclas Enter nos campos de Planimetria
     document.getElementById("txt-distance").addEventListener("keypress", (e) => {
         if (e.key === "Enter") addPoint();
     });
@@ -188,7 +265,7 @@ function registerEvents() {
         if (e.key === "Enter") addPoint();
     });
 
-    // 3. Operações gerais
+    // 4. Operações de Planimetria
     document.getElementById("btn-remove-last").addEventListener("click", () => {
         if (pointsList.length > 0) {
             pointsList.pop();
@@ -198,12 +275,12 @@ function registerEvents() {
     });
 
     document.getElementById("btn-reset").addEventListener("click", () => {
-        if (confirm("Deseja realmente apagar todos os pontos da poligonal?")) {
+        if (confirm("Deseja realmente apagar toda a planimetria da poligonal?")) {
             pointsList = [];
             userEditedExpected = false;
             
             // Reseta para a origem default
-            startPoint = new TopoPoint("P0", 0.0, 0.0, "", 0.0, 0, 0, 0.0, true, 0.0);
+            startPoint = new TopoPoint("P0", 0.0, 0.0, "", 0.0, 0, 0, 0.0, true, 0.0, startPoint.z);
             document.getElementById("txt-start-name").value = "P0";
             document.getElementById("txt-start-x").value = "0.000";
             document.getElementById("txt-start-y").value = "0.000";
@@ -218,7 +295,7 @@ function registerEvents() {
 
     document.getElementById("btn-export").addEventListener("click", exportToCSV);
 
-    // 4. Fechamento esperado (Eventos de alteração manual)
+    // 5. Fechamento esperado (Planimetria)
     const expectedXInput = document.getElementById("txt-expected-x");
     const expectedYInput = document.getElementById("txt-expected-y");
 
@@ -227,7 +304,109 @@ function registerEvents() {
     expectedYInput.addEventListener("focus", () => { userEditedExpected = true; });
     expectedYInput.addEventListener("blur", () => { saveData(); updateClosurePanel(); });
 
-    // 5. Controles de Zoom do Canvas
+    // 6. Atualizar Cota Z de ponto da poligonal (Altimetria)
+    document.getElementById("btn-update-z").addEventListener("click", () => {
+        const pointName = document.getElementById("sel-z-point").value;
+        const zStr = document.getElementById("txt-z-value").value;
+        try {
+            const zVal = parseDoubleRobust(zStr);
+            if (startPoint.name === pointName) {
+                startPoint.z = zVal;
+            } else {
+                const pt = pointsList.find(p => p.name === pointName);
+                if (pt) pt.z = zVal;
+            }
+            saveData();
+            updateUI();
+            updateZPointDropdown();
+        } catch (e) {
+            alert("Insira uma cota Z válida (Exemplo: 100.52).");
+        }
+    });
+
+    // 7. Adicionar Ponto Cotado / Irradiado (Altimetria)
+    document.getElementById("btn-add-irr").addEventListener("click", () => {
+        const name = document.getElementById("txt-irr-name").value.trim();
+        const xStr = document.getElementById("txt-irr-x").value;
+        const yStr = document.getElementById("txt-irr-y").value;
+        const zStr = document.getElementById("txt-irr-z").value;
+        
+        if (!name) {
+            alert("Digite o nome do ponto cotado.");
+            return;
+        }
+        
+        try {
+            const x = parseDoubleRobust(xStr);
+            const y = parseDoubleRobust(yStr);
+            const z = parseDoubleRobust(zStr);
+            
+            const newIrr = new AltimetryPoint(name, x, y, z);
+            altPointsList.push(newIrr);
+            
+            // Incrementa sugestão de nome
+            document.getElementById("txt-irr-name").value = "I" + (altPointsList.length + 1);
+            document.getElementById("txt-irr-x").value = "";
+            document.getElementById("txt-irr-y").value = "";
+            document.getElementById("txt-irr-z").value = "";
+            
+            saveData();
+            updateUI();
+        } catch (e) {
+            alert("Verifique os valores de X, Y e Z. Devem ser numéricos.");
+        }
+    });
+
+    // Teclas Enter no formulário de Pontos Cotados
+    document.getElementById("txt-irr-z").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            document.getElementById("btn-add-irr").click();
+        }
+    });
+
+    // 8. Operações de Altimetria
+    document.getElementById("btn-remove-last-irr").addEventListener("click", () => {
+        if (altPointsList.length > 0) {
+            altPointsList.pop();
+            document.getElementById("txt-irr-name").value = "I" + (altPointsList.length + 1);
+            saveData();
+            updateUI();
+        }
+    });
+
+    document.getElementById("btn-reset-alt").addEventListener("click", () => {
+        if (confirm("Deseja realmente apagar todos os dados de altimetria? (As cotas Z da poligonal voltarão para 0)")) {
+            startPoint.z = 0.0;
+            pointsList.forEach(p => p.z = 0.0);
+            altPointsList = [];
+            document.getElementById("txt-irr-name").value = "I1";
+            saveData();
+            updateUI();
+        }
+    });
+
+    // 9. Configurações de Curva de Nível (Ouvir mudanças de inputs e checkboxes)
+    document.getElementById("txt-contour-interval").addEventListener("change", () => {
+        try {
+            parseDoubleRobust(document.getElementById("txt-contour-interval").value);
+            saveData();
+            draw();
+        } catch (e) {
+            alert("Valor de Equidistância inválido.");
+            document.getElementById("txt-contour-interval").value = "1.0";
+        }
+    });
+    
+    document.getElementById("num-master-interval").addEventListener("change", () => {
+        saveData();
+        draw();
+    });
+
+    document.getElementById("chk-show-contours").addEventListener("change", () => { saveData(); draw(); });
+    document.getElementById("chk-show-tin").addEventListener("change", () => { saveData(); draw(); });
+    document.getElementById("chk-show-labels").addEventListener("change", () => { saveData(); draw(); });
+
+    // 10. Controles de Zoom do Canvas
     document.getElementById("btn-zoom-in").addEventListener("click", () => {
         zoomFactor *= 1.25;
         draw();
@@ -243,7 +422,7 @@ function registerEvents() {
         draw();
     });
 
-    // 6. Arrastar e Mover (Pan) no Canvas
+    // 11. Arrastar e Mover (Pan) no Canvas
     canvas.addEventListener("mousedown", (e) => {
         isDragging = true;
         startDragX = e.clientX - panX;
@@ -273,6 +452,68 @@ function registerEvents() {
         zoomFactor = Math.max(0.1, Math.min(30, zoomFactor));
         draw();
     });
+}
+
+// Alternar entre abas Planimetria e Altimetria
+function switchTab(tabName) {
+    activeTab = tabName;
+    
+    // Atualiza classes ativas nos botões de abas
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-tab") === tabName);
+    });
+    
+    // Atualiza sidebar content
+    document.querySelectorAll(".sidebar-tab-content").forEach(content => {
+        content.classList.toggle("active", content.id === `sidebar-${tabName}`);
+    });
+    
+    // Atualiza workspace content
+    document.querySelectorAll(".workspace-tab-content").forEach(content => {
+        content.classList.toggle("active", content.id === `workspace-${tabName}`);
+    });
+    
+    // Atualiza o badge do visualizador
+    const badge = document.getElementById("visualizer-mode");
+    if (badge) {
+        badge.textContent = tabName === "planimetria" ? "Planimetria" : "Altimetria";
+        badge.className = `visualizer-badge ${tabName === "planimetria" ? "planimetria-mode" : "altimetry-mode"}`;
+    }
+    
+    // Se mudou para altimetria, sincroniza o dropdown de pontos da poligonal
+    if (tabName === "altimetria") {
+        updateZPointDropdown();
+    }
+    
+    saveData();
+    draw();
+}
+
+function updateZPointDropdown() {
+    const select = document.getElementById("sel-z-point");
+    if (!select) return;
+    
+    const currentValue = select.value;
+    select.innerHTML = "";
+    
+    // Adiciona ponto inicial
+    const optStart = document.createElement("option");
+    optStart.value = startPoint.name;
+    optStart.textContent = `${startPoint.name} (Z: ${startPoint.z.toFixed(3)}m)`;
+    select.appendChild(optStart);
+    
+    // Adiciona pontos da poligonal
+    pointsList.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.name;
+        opt.textContent = `${p.name} (Z: ${p.z.toFixed(3)}m)`;
+        select.appendChild(opt);
+    });
+
+    // Tenta re-selecionar o que estava selecionado antes
+    if (currentValue) {
+        select.value = currentValue;
+    }
 }
 
 // ==========================================================================
@@ -342,20 +583,21 @@ function addPoint() {
     const newX = prevX + deltaX;
     const newY = prevY + deltaY;
     
-    // Normaliza o ângulo inserido de volta para DMS para manter a consistência da tabela e do CSV
+    // Normaliza o ângulo de entrada de volta para DMS para consistência
     const normDeg = Math.floor(inputDecimalDegrees);
     const remMin = (inputDecimalDegrees - normDeg) * 60.0;
     const normMin = Math.floor(remMin);
     const normSec = (remMin - normMin) * 60.0;
 
-    const newPoint = new TopoPoint(toName, newX, newY, fromName, distance, normDeg, normMin, normSec, isAzimuth, calculatedAzimuth);
+    // Novo ponto criado com Z default = 0.0
+    const newPoint = new TopoPoint(toName, newX, newY, fromName, distance, normDeg, normMin, normSec, isAzimuth, calculatedAzimuth, 0.0);
     pointsList.push(newPoint);
     
     // Salvar e atualizar interface
     saveData();
     updateUI();
     
-    // Reseta entradas de distância e ângulos
+    // Reseta entradas
     document.getElementById("txt-distance").value = "";
     document.getElementById("txt-degrees").value = "0";
     document.getElementById("num-minutes").value = 0;
@@ -371,6 +613,7 @@ function addPoint() {
 function updateUI() {
     updateFromLabel();
     refreshTable();
+    refreshAltimetryTable();
     updateClosurePanel();
     draw();
 }
@@ -380,21 +623,24 @@ function updateFromLabel() {
     const lblFromPoint = document.getElementById("lbl-from-point");
     const txtToPoint = document.getElementById("txt-to-point");
     
+    if (!selAngleType || !lblFromPoint || !txtToPoint) return;
+    
     if (pointsList.length === 0) {
         lblFromPoint.textContent = startPoint.name;
         txtToPoint.value = "P1";
         selAngleType.value = "azimuth";
-        selAngleType.disabled = true; // O primeiro ponto exige Azimute
+        selAngleType.disabled = true;
     } else {
         lblFromPoint.textContent = pointsList[pointsList.length - 1].name;
         txtToPoint.value = "P" + (pointsList.length + 1);
         selAngleType.disabled = false;
-        selAngleType.value = "angle"; // Default é Ângulo Horário (Ré)
+        selAngleType.value = "angle";
     }
 }
 
 function refreshTable() {
     const tbody = document.getElementById("tbl-body");
+    if (!tbody) return;
     tbody.innerHTML = "";
 
     // 1. Linha 0: Ponto Inicial
@@ -444,6 +690,63 @@ function refreshTable() {
     });
 }
 
+function refreshAltimetryTable() {
+    const tbody = document.getElementById("tbl-alt-body");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    
+    // 1. Pontos da poligonal
+    const startRow = document.createElement("tr");
+    startRow.innerHTML = `
+        <td style="font-weight: 700;">${startPoint.name}</td>
+        <td><span class="angle-tag-az">Poligonal</span></td>
+        <td>${startPoint.x.toFixed(3)}</td>
+        <td>${startPoint.y.toFixed(3)}</td>
+        <td style="font-family: var(--font-heading); font-weight: 700; color: var(--secondary);">${startPoint.z.toFixed(3)}</td>
+        <td>-</td>
+    `;
+    tbody.appendChild(startRow);
+    
+    pointsList.forEach(p => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td style="font-weight: 700;">${p.name}</td>
+            <td><span class="angle-tag-az">Poligonal</span></td>
+            <td>${p.x.toFixed(3)}</td>
+            <td>${p.y.toFixed(3)}</td>
+            <td style="font-family: var(--font-heading); font-weight: 700; color: var(--secondary);">${p.z.toFixed(3)}</td>
+            <td>-</td>
+        `;
+        tbody.appendChild(row);
+    });
+    
+    // 2. Pontos cotados/irradiados
+    altPointsList.forEach((p, idx) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td style="font-weight: 700; color: var(--danger);">${p.name}</td>
+            <td><span class="angle-tag-hz">Cotado</span></td>
+            <td>${p.x.toFixed(3)}</td>
+            <td>${p.y.toFixed(3)}</td>
+            <td style="font-family: var(--font-heading); font-weight: 700; color: var(--warning);">${p.z.toFixed(3)}</td>
+            <td>
+                <button class="btn-table-danger" onclick="removeAltimetryPoint(${idx})">Remover</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Tornar global para acesso da tabela
+window.removeAltimetryPoint = function(idx) {
+    if (idx >= 0 && idx < altPointsList.length) {
+        altPointsList.splice(idx, 1);
+        document.getElementById("txt-irr-name").value = "I" + (altPointsList.length + 1);
+        saveData();
+        updateUI();
+    }
+};
+
 function updateClosurePanel() {
     const valPerimeter = document.getElementById("val-perimeter");
     const valErrX = document.getElementById("val-err-x");
@@ -451,17 +754,17 @@ function updateClosurePanel() {
     const valErrLinear = document.getElementById("val-err-linear");
     const valPrecision = document.getElementById("val-precision");
 
+    if (!valPerimeter) return;
+
     if (pointsList.length === 0) {
         valPerimeter.textContent = "-";
         valErrX.textContent = "-";
         valErrY.textContent = "-";
         valErrLinear.textContent = "-";
         valPrecision.textContent = "-";
-        valPrecision.style.color = "var(--color-text-muted)";
         return;
     }
 
-    // Se o usuário não editou manualmente, sincroniza X/Y esperado com o ponto inicial (origem)
     if (!userEditedExpected) {
         document.getElementById("txt-expected-x").value = startPoint.x.toFixed(3);
         document.getElementById("txt-expected-y").value = startPoint.y.toFixed(3);
@@ -476,7 +779,6 @@ function updateClosurePanel() {
         const errY = lastPoint.y - expY;
         const errL = Math.sqrt(errX * errX + errY * errY);
 
-        // Perímetro total
         let perimeter = 0;
         pointsList.forEach(p => {
             perimeter += p.distance;
@@ -494,13 +796,12 @@ function updateClosurePanel() {
             const ratio = Math.round(perimeter / errL);
             valPrecision.textContent = `1 : ${ratio.toLocaleString()}`;
             
-            // Coloração conforme qualidade
             if (ratio >= 5000) {
-                valPrecision.style.color = "var(--secondary)"; // Verde/Ciano
+                valPrecision.style.color = "var(--secondary)";
             } else if (ratio >= 1000) {
-                valPrecision.style.color = "var(--warning)"; // Amarelo
+                valPrecision.style.color = "var(--warning)";
             } else {
-                valPrecision.style.color = "var(--danger)"; // Vermelho
+                valPrecision.style.color = "var(--danger)";
             }
         } else {
             valPrecision.textContent = "Fechamento Perfeito";
@@ -517,6 +818,213 @@ function updateClosurePanel() {
 }
 
 // ==========================================================================
+// ALGORITMO DE TRIANGULAÇÃO DE DELAUNAY (Bowyer-Watson)
+// ==========================================================================
+function triangulate(points) {
+    if (points.length < 3) return [];
+    
+    // 1. Encontrar caixa envolvente dos pontos
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    points.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+    });
+    
+    const dx = maxX - minX;
+    const dy = maxY - minY;
+    const deltaMax = Math.max(dx, dy);
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    
+    // Super-triângulo que envelopa com folga todos os pontos
+    const p1 = { name: "ST1", x: midX - 20 * deltaMax, y: midY - deltaMax, z: 0.0 };
+    const p2 = { name: "ST2", x: midX, y: midY + 20 * deltaMax, z: 0.0 };
+    const p3 = { name: "ST3", x: midX + 20 * deltaMax, y: midY - deltaMax, z: 0.0 };
+    
+    let triangles = [new Triangle(p1, p2, p3)];
+    
+    // 2. Inserir recursivamente cada ponto no TIN
+    points.forEach(p => {
+        let badTriangles = [];
+        
+        triangles.forEach(t => {
+            const cc = t.getCircumcircle();
+            const dist2 = (p.x - cc.x)*(p.x - cc.x) + (p.y - cc.y)*(p.y - cc.y);
+            // Se o ponto está dentro do círculo circunscrito do triângulo
+            if (dist2 <= cc.r2) {
+                badTriangles.push(t);
+            }
+        });
+        
+        // Encontrar as arestas de fronteira da cavidade
+        let polygon = [];
+        badTriangles.forEach(t => {
+            const edges = [
+                { a: t.p1, b: t.p2 },
+                { a: t.p2, b: t.p3 },
+                { a: t.p3, b: t.p1 }
+            ];
+            
+            edges.forEach(edge => {
+                let shared = false;
+                badTriangles.forEach(otherT => {
+                    if (otherT === t) return;
+                    const otherEdges = [
+                        { a: otherT.p1, b: otherT.p2 },
+                        { a: otherT.p2, b: otherT.p3 },
+                        { a: otherT.p3, b: otherT.p1 }
+                    ];
+                    otherEdges.forEach(otherEdge => {
+                        if ((edge.a === otherEdge.a && edge.b === otherEdge.b) || 
+                            (edge.a === otherEdge.b && edge.b === otherEdge.a)) {
+                            shared = true;
+                        }
+                    });
+                });
+                
+                if (!shared) {
+                    polygon.push(edge);
+                }
+            });
+        });
+        
+        // Remover triângulos inválidos
+        triangles = triangles.filter(t => !badTriangles.includes(t));
+        
+        // Criar novos triângulos do ponto à fronteira da cavidade
+        polygon.forEach(edge => {
+            triangles.push(new Triangle(edge.a, edge.b, p));
+        });
+    });
+    
+    // 3. Remover triângulos vinculados ao super-triângulo
+    triangles = triangles.filter(t => {
+        return t.p1 !== p1 && t.p1 !== p2 && t.p1 !== p3 &&
+               t.p2 !== p1 && t.p2 !== p2 && t.p2 !== p3 &&
+               t.p3 !== p1 && t.p3 !== p2 && t.p3 !== p3;
+    });
+    
+    return triangles;
+}
+
+// ==========================================================================
+// Algoritmos de Suavização de Curvas (Stitching & Chaikin)
+// ==========================================================================
+
+// Une segmentos desconexos em linhas contínuas (polilinhas)
+function stitchSegments(segments, tolerance = 1e-5) {
+    const polylines = [];
+    const remaining = [...segments];
+    
+    function pointsEqual(pt1, pt2) {
+        return Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y) < tolerance;
+    }
+    
+    while (remaining.length > 0) {
+        const firstSeg = remaining.shift();
+        const polyline = [firstSeg.p1, firstSeg.p2];
+        
+        let found = true;
+        while (found) {
+            found = false;
+            const head = polyline[0];
+            const tail = polyline[polyline.length - 1];
+            
+            for (let i = 0; i < remaining.length; i++) {
+                const seg = remaining[i];
+                if (pointsEqual(seg.p1, tail)) {
+                    polyline.push(seg.p2);
+                    remaining.splice(i, 1);
+                    found = true;
+                    break;
+                } else if (pointsEqual(seg.p2, tail)) {
+                    polyline.push(seg.p1);
+                    remaining.splice(i, 1);
+                    found = true;
+                    break;
+                } else if (pointsEqual(seg.p1, head)) {
+                    polyline.unshift(seg.p2);
+                    remaining.splice(i, 1);
+                    found = true;
+                    break;
+                } else if (pointsEqual(seg.p2, head)) {
+                    polyline.unshift(seg.p1);
+                    remaining.splice(i, 1);
+                    found = true;
+                    break;
+                }
+            }
+            
+            // Se fechou um loop completo, interrompe o crescimento desse loop
+            if (polyline.length > 2 && pointsEqual(polyline[0], polyline[polyline.length - 1])) {
+                break;
+            }
+        }
+        polylines.push(polyline);
+    }
+    return polylines;
+}
+
+// Aplica o algoritmo de subdivisão de Chaikin para suavizar curvas
+function smoothPolyline(polyline, iterations = 2) {
+    if (polyline.length < 3) return polyline;
+    
+    const isClosed = Math.hypot(polyline[0].x - polyline[polyline.length - 1].x, polyline[0].y - polyline[polyline.length - 1].y) < 1e-5;
+    
+    let current = [...polyline];
+    
+    for (let iter = 0; iter < iterations; iter++) {
+        const next = [];
+        const n = current.length;
+        
+        if (isClosed) {
+            // Curva Fechada: trata os pontos de forma cíclica
+            const pts = current.slice(0, -1);
+            const len = pts.length;
+            for (let i = 0; i < len; i++) {
+                const p0 = pts[i];
+                const p1 = pts[(i + 1) % len];
+                
+                const q = {
+                    x: 0.75 * p0.x + 0.25 * p1.x,
+                    y: 0.75 * p0.y + 0.25 * p1.y
+                };
+                const r = {
+                    x: 0.25 * p0.x + 0.75 * p1.x,
+                    y: 0.25 * p0.y + 0.75 * p1.y
+                };
+                next.push(q, r);
+            }
+            // Reconecta o loop
+            next.push({ ...next[0] });
+        } else {
+            // Curva Aberta: mantém os pontos inicial e final exatos
+            next.push({ ...current[0] });
+            for (let i = 0; i < n - 1; i++) {
+                const p0 = current[i];
+                const p1 = current[i + 1];
+                
+                const q = {
+                    x: 0.75 * p0.x + 0.25 * p1.x,
+                    y: 0.75 * p0.y + 0.25 * p1.y
+                };
+                const r = {
+                    x: 0.25 * p0.x + 0.75 * p1.x,
+                    y: 0.25 * p0.y + 0.75 * p1.y
+                };
+                next.push(q, r);
+            }
+            next.push({ ...current[n - 1] });
+        }
+        current = next;
+    }
+    return current;
+}
+
+// ==========================================================================
 // Motor de Desenho Gráfico (HTML5 Canvas)
 // ==========================================================================
 function draw() {
@@ -526,13 +1034,24 @@ function draw() {
     ctx.fillStyle = "#0b0b10";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const allPoints = [startPoint, ...pointsList];
+    // Listar todos os pontos conforme a aba
+    let allPoints = [];
+    if (activeTab === "planimetria") {
+        allPoints = [startPoint, ...pointsList];
+    } else {
+        // Altimetria: Mescla pontos da poligonal e pontos irradiados avulsos
+        allPoints = [
+            { name: startPoint.name, x: startPoint.x, y: startPoint.y, z: startPoint.z, isPoligonal: true },
+            ...pointsList.map(p => ({ name: p.name, x: p.x, y: p.y, z: p.z, isPoligonal: true })),
+            ...altPointsList.map(p => ({ name: p.name, x: p.x, y: p.y, z: p.z, isPoligonal: false }))
+        ];
+    }
+
+    if (allPoints.length === 0) return;
 
     // 1. Achar caixa envolvente
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
 
     allPoints.forEach(p => {
         if (p.x < minX) minX = p.x;
@@ -544,11 +1063,10 @@ function draw() {
     let diffX = maxX - minX;
     let diffY = maxY - minY;
 
-    // Evitar divisão por zero caso haja apenas um ponto
     if (diffX < 1e-5) diffX = 10.0;
     if (diffY < 1e-5) diffY = 10.0;
 
-    // Adiciona padding de 15% nas bordas do desenho para não cortar nomes
+    // Padding de segurança
     minX -= diffX * 0.15;
     maxX += diffX * 0.15;
     minY -= diffY * 0.15;
@@ -562,18 +1080,15 @@ function draw() {
     const scaleX = (canvas.width - 2 * padding) / diffX;
     const scaleY = (canvas.height - 2 * padding) / diffY;
     const baseScale = Math.min(scaleX, scaleY);
-    
-    // Escala final aplicando o zoom do usuário
     const scale = baseScale * zoomFactor;
 
     // Centraliza o desenho no canvas
     const offsetX = padding + (canvas.width - 2 * padding - diffX * scale) / 2;
     const offsetY = padding + (canvas.height - 2 * padding - diffY * scale) / 2;
 
-    // Função interna auxiliar para converter Coordenada Geodésica (X, Y) -> Pixels da Tela (sx, sy)
+    // Geodésica -> Pixels da Tela
     function toScreen(x, y) {
         const sx = offsetX + (x - minX) * scale + panX;
-        // Inverte o eixo Y pois em topografia cresce para cima, e em canvas para baixo
         const sy = canvas.height - (offsetY + (y - minY) * scale + panY);
         return { x: sx, y: sy };
     }
@@ -594,7 +1109,7 @@ function draw() {
     }
     ctx.stroke();
 
-    // Desenhar eixos cartesianos principais (X=0 e Y=0) se estiverem visíveis
+    // Eixos principais
     if (minX <= 0 && maxX >= 0) {
         const zeroScreen = toScreen(0, startPoint.y);
         ctx.strokeStyle = "#2d2d3f";
@@ -614,97 +1129,289 @@ function draw() {
         ctx.stroke();
     }
 
-    // 4. Desenhar as linhas de conexão do trajeto
-    if (allPoints.length > 1) {
-        ctx.strokeStyle = "rgba(108, 92, 231, 0.85)"; // Neon purple
-        ctx.lineWidth = 3.0;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        
-        const first = toScreen(allPoints[0].x, allPoints[0].y);
-        ctx.moveTo(first.x, first.y);
+    // ==========================================
+    // RENDERIZAÇÃO ESPECÍFICA: PLANIMETRIA
+    // ==========================================
+    if (activeTab === "planimetria") {
+        // Desenhar as linhas de conexão da poligonal
+        if (allPoints.length > 1) {
+            ctx.strokeStyle = "rgba(108, 92, 231, 0.85)";
+            ctx.lineWidth = 3.0;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            
+            const first = toScreen(allPoints[0].x, allPoints[0].y);
+            ctx.moveTo(first.x, first.y);
 
-        for (let i = 1; i < allPoints.length; i++) {
-            const pt = toScreen(allPoints[i].x, allPoints[i].y);
-            ctx.lineTo(pt.x, pt.y);
+            for (let i = 1; i < allPoints.length; i++) {
+                const pt = toScreen(allPoints[i].x, allPoints[i].y);
+                ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
         }
-        ctx.stroke();
+
+        // Desenhar balões de Azimute no meio de cada segmento
+        ctx.font = "bold 9px 'Inter', sans-serif";
+        for (let i = 1; i < allPoints.length; i++) {
+            const pt1 = toScreen(allPoints[i - 1].x, allPoints[i - 1].y);
+            const pt2 = toScreen(allPoints[i].x, allPoints[i].y);
+
+            const mx = (pt1.x + pt2.x) / 2;
+            const my = (pt1.y + pt2.y) / 2;
+
+            const azStr = formatDMS(allPoints[i].calculatedAzimuth);
+            const metrics = ctx.measureText(azStr);
+            const textWidth = metrics.width;
+            const textHeight = 10;
+
+            // Fundo
+            ctx.fillStyle = "rgba(11, 11, 16, 0.95)";
+            ctx.beginPath();
+            ctx.rect(mx - textWidth / 2 - 5, my - textHeight / 2 - 3, textWidth + 10, textHeight + 6);
+            ctx.fill();
+
+            // Borda
+            ctx.strokeStyle = "rgba(108, 92, 231, 0.7)";
+            ctx.lineWidth = 1.0;
+            ctx.stroke();
+
+            // Texto
+            ctx.fillStyle = "#ffe66d";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(azStr, mx, my + 1);
+        }
+
+        // Desenhar os nós dos pontos planimétricos
+        allPoints.forEach((p, idx) => {
+            const pt = toScreen(p.x, p.y);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = (idx === 0) ? "#00d2d3" : "#ff7675";
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 4.5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 12px 'Outfit', sans-serif";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "bottom";
+            ctx.fillText(p.name, pt.x + 10, pt.y - 4);
+
+            ctx.fillStyle = "#9595a8";
+            ctx.font = "500 9px 'Inter', sans-serif";
+            ctx.textBaseline = "top";
+            ctx.fillText(`X:${p.x.toFixed(1)} Y:${p.y.toFixed(1)}`, pt.x + 10, pt.y + 2);
+        });
     }
+    
+    // ==========================================
+    // RENDERIZAÇÃO ESPECÍFICA: ALTIMETRIA
+    // ==========================================
+    else if (activeTab === "altimetria") {
+        const showTin = document.getElementById("chk-show-tin").checked;
+        const showContours = document.getElementById("chk-show-contours").checked;
+        const showLabels = document.getElementById("chk-show-labels").checked;
 
-    // 5. Desenhar balões com o Azimute absoluto de cada trecho no gráfico
-    ctx.font = "bold 9px 'Inter', sans-serif";
-    for (let i = 1; i < allPoints.length; i++) {
-        const pt1 = toScreen(allPoints[i - 1].x, allPoints[i - 1].y);
-        const pt2 = toScreen(allPoints[i].x, allPoints[i].y);
+        // Triangulação TIN
+        const triangles = triangulate(allPoints);
 
-        // Ponto médio da linha
-        const mx = (pt1.x + pt2.x) / 2;
-        const my = (pt1.y + pt2.y) / 2;
+        // 1. Desenhar a malha de triangulação TIN
+        if (showTin && triangles.length > 0) {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+            ctx.lineWidth = 1.0;
+            ctx.setLineDash([3, 3]); // Linha tracejada fina
+            ctx.beginPath();
+            triangles.forEach(t => {
+                const s1 = toScreen(t.p1.x, t.p1.y);
+                const s2 = toScreen(t.p2.x, t.p2.y);
+                const s3 = toScreen(t.p3.x, t.p3.y);
+                
+                ctx.moveTo(s1.x, s1.y);
+                ctx.lineTo(s2.x, s2.y);
+                ctx.lineTo(s3.x, s3.y);
+                ctx.closePath();
+            });
+            ctx.stroke();
+            ctx.setLineDash([]); // Limpa tracejado
+        }
 
-        // Ângulo de azimute formatado
-        const azStr = formatDMS(allPoints[i].calculatedAzimuth);
+        // 2. Interpolação e Desenho das Curvas de Nível
+        if (showContours && triangles.length > 0) {
+            // Achar limites verticais (Z)
+            let minZ = Infinity;
+            let maxZ = -Infinity;
+            allPoints.forEach(p => {
+                if (p.z < minZ) minZ = p.z;
+                if (p.z > maxZ) maxZ = p.z;
+            });
 
-        // Medir o balão de texto
-        const metrics = ctx.measureText(azStr);
-        const textWidth = metrics.width;
-        const textHeight = 10;
+            if (minZ !== Infinity && maxZ !== -Infinity && Math.abs(maxZ - minZ) > 1e-4) {
+                let equidistance = 1.0;
+                let masterInterval = 5;
+                try {
+                    equidistance = parseDoubleRobust(document.getElementById("txt-contour-interval").value);
+                    masterInterval = parseInt(document.getElementById("num-master-interval").value) || 5;
+                } catch(e) {}
 
-        // Fundo escuro opaco do balão
-        ctx.fillStyle = "rgba(11, 11, 16, 0.95)";
-        ctx.beginPath();
-        const rx = mx - textWidth / 2 - 5;
-        const ry = my - textHeight / 2 - 3;
-        const rw = textWidth + 10;
-        const rh = textHeight + 6;
-        ctx.rect(rx, ry, rw, rh);
-        ctx.fill();
+                // Determina as fatias de cotas inteiras que passam pelo relevo
+                const startCota = Math.ceil(minZ / equidistance) * equidistance;
+                const endCota = Math.floor(maxZ / equidistance) * equidistance;
 
-        // Borda roxa fina
-        ctx.strokeStyle = "rgba(108, 92, 231, 0.7)";
-        ctx.lineWidth = 1.0;
-        ctx.stroke();
+                // Loop por cada fatia de altura H
+                for (let h = startCota; h <= endCota; h += equidistance) {
+                    const isMestra = Math.round(h / equidistance) % masterInterval === 0;
 
-        // Texto em amarelo destacado (cor literal #ffe66d)
-        ctx.fillStyle = "#ffe66d";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(azStr, mx, my + 1);
+                    ctx.lineWidth = isMestra ? 1.8 : 0.8;
+                    // Curvas mestras em marrom escuro, intermediárias em marrom bem claro
+                    ctx.strokeStyle = isMestra ? "#a87a54" : "rgba(205, 161, 125, 0.45)";
+
+                    // 2a. Varre todos os triângulos gerando os segmentos de reta na cota h (em coordenadas geodésicas)
+                    const hSegments = [];
+                    triangles.forEach(t => {
+                        const pts = [t.p1, t.p2, t.p3];
+                        const intersects = [];
+
+                        // Testa as 3 arestas do triângulo: AB, BC, CA
+                        for (let j = 0; j < 3; j++) {
+                            const pA = pts[j];
+                            const pB = pts[(j + 1) % 3];
+
+                            // Condição robusta para evitar duplicações em vértices idênticos a h
+                            if ((pA.z >= h && pB.z < h) || (pB.z >= h && pA.z < h)) {
+                                // Evita divisão por zero
+                                const zDiff = pB.z - pA.z;
+                                if (Math.abs(zDiff) > 1e-9) {
+                                    const tFactor = (h - pA.z) / zDiff;
+                                    const xi = pA.x + tFactor * (pB.x - pA.x);
+                                    const yi = pA.y + tFactor * (pB.y - pA.y);
+                                    intersects.push({ x: xi, y: yi });
+                                }
+                            }
+                        }
+
+                        // Se cruza exatamente 2 arestas do triângulo, temos um segmento
+                        if (intersects.length === 2) {
+                            hSegments.push({ p1: intersects[0], p2: intersects[1] });
+                        }
+                    });
+
+                    // 2b. Une os segmentos em linhas contínuas
+                    const polylines = stitchSegments(hSegments);
+
+                    // 2c. Suaviza as linhas usando subdivisão de Chaikin
+                    const smoothedPolylines = polylines.map(line => smoothPolyline(line, 2));
+
+                    // 2d. Desenha as linhas suavizadas no Canvas
+                    smoothedPolylines.forEach(polyline => {
+                        if (polyline.length < 2) return;
+                        ctx.beginPath();
+                        const first = toScreen(polyline[0].x, polyline[0].y);
+                        ctx.moveTo(first.x, first.y);
+                        for (let i = 1; i < polyline.length; i++) {
+                            const pt = toScreen(polyline[i].x, polyline[i].y);
+                            ctx.lineTo(pt.x, pt.y);
+                        }
+                        ctx.stroke();
+                    });
+
+                    // 2e. Rótulos da cota nas curvas mestras (alinhados com a curva no ponto médio)
+                    if (isMestra) {
+                        smoothedPolylines.forEach(polyline => {
+                            if (polyline.length < 3) return; // Precisa de pontos suficientes para calcular direção e ponto médio
+                            
+                            // Converte pontos para pixels da tela para medir comprimento real
+                            const screenPts = polyline.map(p => toScreen(p.x, p.y));
+                            
+                            // Calcula o comprimento total da linha na tela
+                            let screenLength = 0;
+                            for (let i = 0; i < screenPts.length - 1; i++) {
+                                screenLength += Math.hypot(screenPts[i+1].x - screenPts[i].x, screenPts[i+1].y - screenPts[i].y);
+                            }
+                            
+                            // Só desenha rótulo se a linha tiver um comprimento razoável na tela (evita poluição em curvas minúsculas)
+                            if (screenLength > 50) {
+                                const midIdx = Math.floor(screenPts.length / 2);
+                                const midPt = screenPts[midIdx];
+                                
+                                // Determina a tangente da curva no ponto médio para alinhar o texto
+                                let angle = 0;
+                                if (midIdx > 0 && midIdx < screenPts.length) {
+                                    const pPrev = screenPts[midIdx - 1];
+                                    const pNext = screenPts[midIdx];
+                                    angle = Math.atan2(pNext.y - pPrev.y, pNext.x - pPrev.x);
+                                    // Normaliza o ângulo para que o texto nunca fique de cabeça para baixo (-90 a 90 graus)
+                                    if (angle > Math.PI / 2) angle -= Math.PI;
+                                    if (angle < -Math.PI / 2) angle += Math.PI;
+                                }
+                                
+                                ctx.save();
+                                ctx.translate(midPt.x, midPt.y);
+                                ctx.rotate(angle);
+                                
+                                const labelText = `${h.toFixed(1)}`;
+                                ctx.font = "bold 8px 'Inter', sans-serif";
+                                const textWidth = ctx.measureText(labelText).width;
+                                
+                                // Cria um fundo opaco atrás do texto para esconder a linha da curva de nível e facilitar leitura
+                                ctx.fillStyle = "#0b0b10";
+                                ctx.fillRect(-textWidth/2 - 3, -5, textWidth + 6, 10);
+                                
+                                // Desenha o texto do rótulo
+                                ctx.fillStyle = "#d2b48c"; // Tom de marrom claro/bege
+                                ctx.textAlign = "center";
+                                ctx.textBaseline = "middle";
+                                ctx.fillText(labelText, 0, 0);
+                                
+                                ctx.restore();
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3. Desenhar os nós de Altimetria
+        allPoints.forEach(p => {
+            const pt = toScreen(p.x, p.y);
+
+            // Borda branca do ponto
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Miolo (Azul ciano para Poligonal, Coral para Cotados/Irradiados)
+            ctx.fillStyle = p.isPoligonal ? "#00d2d3" : "#ff7675";
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 3.5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Nome do ponto
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 11px 'Outfit', sans-serif";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "bottom";
+            ctx.fillText(p.name, pt.x + 8, pt.y - 3);
+
+            // Cota Z (exibe Z ao lado se marcado)
+            if (showLabels) {
+                ctx.fillStyle = p.isPoligonal ? "var(--secondary)" : "var(--warning)";
+                ctx.font = "bold 9px 'Inter', sans-serif";
+                ctx.textBaseline = "top";
+                ctx.fillText(`Z: ${p.z.toFixed(2)}m`, pt.x + 8, pt.y + 1);
+            }
+        });
     }
-
-    // 6. Desenhar os nós dos pontos (Origem e Vantes)
-    allPoints.forEach((p, idx) => {
-        const pt = toScreen(p.x, p.y);
-
-        // Círculo externo branco (borda)
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 6, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Miolo colorido (cores literais #00d2d3 para origem e #ff7675 para vantes)
-        ctx.fillStyle = (idx === 0) ? "#00d2d3" : "#ff7675";
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4.5, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Nome do ponto
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 12px 'Outfit', sans-serif";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(p.name, pt.x + 10, pt.y - 4);
-
-        // Coordenadas pequenas (cor literal #9595a8)
-        ctx.fillStyle = "#9595a8";
-        ctx.font = "500 9px 'Inter', sans-serif";
-        ctx.textBaseline = "top";
-        ctx.fillText(`X:${p.x.toFixed(1)} Y:${p.y.toFixed(1)}`, pt.x + 10, pt.y + 2);
-    });
 }
 
 // ==========================================================================
-// Exportar para Arquivo CSV
+// Exportar para Arquivo CSV (Contendo Z)
 // ==========================================================================
 function exportToCSV() {
     if (pointsList.length === 0) {
@@ -712,12 +1419,12 @@ function exportToCSV() {
         return;
     }
 
-    let csvContent = "De,Para,Distancia (m),Angulo Lido,Azimute Calculado,Delta X (m),Delta Y (m),Coord X (m),Coord Y (m)\n";
+    let csvContent = "De,Para,Distancia (m),Angulo Lido,Azimute Calculado,Delta X (m),Delta Y (m),Coord X (m),Coord Y (m),Cota Z (m)\n";
     
     // 1. Linha da Origem
-    csvContent += `-,${startPoint.name},0.00,-,-,0.000,0.000,${startPoint.x.toFixed(3)},${startPoint.y.toFixed(3)}\n`;
+    csvContent += `-,${startPoint.name},0.00,-,-,0.000,0.000,${startPoint.x.toFixed(3)},${startPoint.y.toFixed(3)},${startPoint.z.toFixed(3)}\n`;
 
-    // 2. Pontos seguintes
+    // 2. Pontos da Poligonal
     pointsList.forEach((p, idx) => {
         const prevX = (idx === 0) ? startPoint.x : pointsList[idx - 1].x;
         const prevY = (idx === 0) ? startPoint.y : pointsList[idx - 1].y;
@@ -729,15 +1436,24 @@ function exportToCSV() {
         const inputAngleDMS = `${angleLabelText}: ${p.deg}d ${p.min}m ${p.sec.toFixed(1)}s`;
         const calcAzDMS = formatDMS(p.calculatedAzimuth).replace("°", "d").replace("'", "m").replace('"', "s");
 
-        csvContent += `${p.fromName},${p.name},${p.distance.toFixed(2)},${inputAngleDMS},${calcAzDMS},${dX.toFixed(3)},${dY.toFixed(3)},${p.x.toFixed(3)},${p.y.toFixed(3)}\n`;
+        csvContent += `${p.fromName},${p.name},${p.distance.toFixed(2)},${inputAngleDMS},${calcAzDMS},${dX.toFixed(3)},${dY.toFixed(3)},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}\n`;
     });
 
-    // Força o download do arquivo no navegador
+    // 3. Pontos Irradiados da Altimetria (se houverem)
+    if (altPointsList.length > 0) {
+        csvContent += "\n--- PONTOS IRRADIADOS / COTADOS DE ALTIMETRIA ---\n";
+        csvContent += "Nome do Ponto,Coordenada X (m),Coordenada Y (m),Cota Z (m)\n";
+        altPointsList.forEach(p => {
+            csvContent += `${p.name},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}\n`;
+        });
+    }
+
+    // Força download
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `poligonal_${startPoint.name}_to_${pointsList[pointsList.length - 1].name}.csv`);
+    link.setAttribute("download", `levantamento_completo_${startPoint.name}.csv`);
     link.style.visibility = "hidden";
     
     document.body.appendChild(link);
