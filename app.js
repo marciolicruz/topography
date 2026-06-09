@@ -294,6 +294,8 @@ function registerEvents() {
     });
 
     document.getElementById("btn-export").addEventListener("click", exportToCSV);
+    document.getElementById("btn-export-dxf").addEventListener("click", exportToDXF);
+    document.getElementById("btn-export-dxf-alt").addEventListener("click", exportToDXF);
 
     // 5. Fechamento esperado (Planimetria)
     const expectedXInput = document.getElementById("txt-expected-x");
@@ -1454,6 +1456,215 @@ function exportToCSV() {
     const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", `levantamento_completo_${startPoint.name}.csv`);
+    link.style.visibility = "hidden";
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// ==========================================================================
+// Exportar para Arquivo DXF (Desenho CAD)
+// ==========================================================================
+function exportToDXF() {
+    if (pointsList.length === 0) {
+        alert("Não há dados de poligonal para exportar.");
+        return;
+    }
+
+    // 1. Cabeçalho e Tabela de Camadas (Layers)
+    let dxf = "  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n";
+    dxf += "  0\nSECTION\n  2\nTABLES\n  0\nTABLE\n  2\nLAYER\n 70\n7\n";
+
+    // Definição das camadas e suas cores padrão no AutoCAD
+    const layers = [
+        { name: "POLIGONAL_PONTOS", color: 4 },       // Ciano
+        { name: "POLIGONAL_LINHAS", color: 6 },       // Magenta
+        { name: "PONTOS_COTADOS", color: 1 },         // Vermelho
+        { name: "TIN_MALHA", color: 9 },              // Cinza claro
+        { name: "CURVAS_MESTRAS", color: 32 },        // Marrom
+        { name: "CURVAS_INTERMEDIARIAS", color: 33 }, // Marrom claro
+        { name: "TEXTO_COTAS", color: 2 }             // Amarelo
+    ];
+
+    layers.forEach(lyr => {
+        dxf += "  0\nLAYER\n  2\n" + lyr.name + "\n 70\n0\n 62\n" + lyr.color + "\n  6\nCONTINUOUS\n";
+    });
+
+    dxf += "  0\nENDTAB\n  0\nENDSEC\n";
+
+    // 2. Seção de Entidades
+    dxf += "  0\nSECTION\n  2\nENTITIES\n";
+
+    // Helpers locais para escrita DXF
+    function writePoint(x, y, z, layer) {
+        return "  0\nPOINT\n  8\n" + layer + "\n 10\n" + x.toFixed(4) + "\n 20\n" + y.toFixed(4) + "\n 30\n" + z.toFixed(4) + "\n";
+    }
+
+    function writeLine(x1, y1, z1, x2, y2, z2, layer) {
+        return "  0\nLINE\n  8\n" + layer + "\n 10\n" + x1.toFixed(4) + "\n 20\n" + y1.toFixed(4) + "\n 30\n" + z1.toFixed(4) + "\n 11\n" + x2.toFixed(4) + "\n 21\n" + y2.toFixed(4) + "\n 31\n" + z2.toFixed(4) + "\n";
+    }
+
+    function writeText(x, y, z, text, height, angleDegrees, layer) {
+        let str = "  0\nTEXT\n  8\n" + layer + "\n 10\n" + x.toFixed(4) + "\n 20\n" + y.toFixed(4) + "\n 30\n" + z.toFixed(4) + "\n 40\n" + height.toFixed(2) + "\n  1\n" + text + "\n";
+        if (angleDegrees !== 0) {
+            str += " 50\n" + angleDegrees.toFixed(2) + "\n";
+        }
+        return str;
+    }
+
+    function write3DFace(p1, p2, p3, layer) {
+        // Para triângulos no formato 3DFACE, o 4º vértice deve ser idêntico ao 3º
+        return "  0\n3DFACE\n  8\n" + layer +
+               "\n 10\n" + p1.x.toFixed(4) + "\n 20\n" + p1.y.toFixed(4) + "\n 30\n" + (p1.z || 0.0).toFixed(4) +
+               "\n 11\n" + p2.x.toFixed(4) + "\n 21\n" + p2.y.toFixed(4) + "\n 31\n" + (p2.z || 0.0).toFixed(4) +
+               "\n 12\n" + p3.x.toFixed(4) + "\n 22\n" + p3.y.toFixed(4) + "\n 32\n" + (p3.z || 0.0).toFixed(4) +
+               "\n 13\n" + p3.x.toFixed(4) + "\n 23\n" + p3.y.toFixed(4) + "\n 33\n" + (p3.z || 0.0).toFixed(4) + "\n";
+    }
+
+    function write3DPolyline(points, zVal, layer) {
+        if (points.length < 2) return "";
+        // 70\n8 indica que a POLYLINE é uma polilinha 3D
+        let str = "  0\nPOLYLINE\n  8\n" + layer + "\n 66\n1\n 70\n8\n 10\n0.0\n 20\n0.0\n 30\n0.0\n";
+        points.forEach(p => {
+            // 70\n32 indica vértice de malha/polilinha 3D
+            str += "  0\nVERTEX\n  8\n" + layer + "\n 70\n32\n 10\n" + p.x.toFixed(4) + "\n 20\n" + p.y.toFixed(4) + "\n 30\n" + zVal.toFixed(4) + "\n";
+        });
+        str += "  0\nSEQEND\n  8\n" + layer + "\n";
+        return str;
+    }
+
+    // 3. Exportar Poligonal (Planimetria)
+    // 3a. Pontos e rótulos da poligonal
+    dxf += writePoint(startPoint.x, startPoint.y, startPoint.z, "POLIGONAL_PONTOS");
+    dxf += writeText(startPoint.x + 0.8, startPoint.y + 0.8, startPoint.z, startPoint.name, 1.2, 0, "POLIGONAL_PONTOS");
+    dxf += writeText(startPoint.x + 0.8, startPoint.y - 0.8, startPoint.z, `Z: ${startPoint.z.toFixed(2)}m`, 0.8, 0, "TEXTO_COTAS");
+
+    pointsList.forEach((p, idx) => {
+        dxf += writePoint(p.x, p.y, p.z, "POLIGONAL_PONTOS");
+        dxf += writeText(p.x + 0.8, p.y + 0.8, p.z, p.name, 1.2, 0, "POLIGONAL_PONTOS");
+        dxf += writeText(p.x + 0.8, p.y - 0.8, p.z, `Z: ${p.z.toFixed(2)}m`, 0.8, 0, "TEXTO_COTAS");
+
+        // 3b. Linhas de conexão
+        const prev = (idx === 0) ? startPoint : pointsList[idx - 1];
+        dxf += writeLine(prev.x, prev.y, prev.z, p.x, p.y, p.z, "POLIGONAL_LINHAS");
+    });
+
+    // 4. Exportar Altimetria (se houver dados)
+    // Mescla pontos para processamento do TIN e Curvas de Nível
+    const allPoints = [
+        { name: startPoint.name, x: startPoint.x, y: startPoint.y, z: startPoint.z, isPoligonal: true },
+        ...pointsList.map(p => ({ name: p.name, x: p.x, y: p.y, z: p.z, isPoligonal: true })),
+        ...altPointsList.map(p => ({ name: p.name, x: p.x, y: p.y, z: p.z, isPoligonal: false }))
+    ];
+
+    // 4a. Pontos irradiados/cotados avulsos
+    altPointsList.forEach(p => {
+        dxf += writePoint(p.x, p.y, p.z, "PONTOS_COTADOS");
+        dxf += writeText(p.x + 0.8, p.y + 0.8, p.z, p.name, 1.0, 0, "PONTOS_COTADOS");
+        dxf += writeText(p.x + 0.8, p.y - 0.8, p.z, `Z: ${p.z.toFixed(2)}m`, 0.8, 0, "TEXTO_COTAS");
+    });
+
+    // Se temos pontos suficientes para gerar relevo
+    if (allPoints.length >= 3) {
+        const triangles = triangulate(allPoints);
+
+        // 4b. Exportar Malha TIN (3DFACEs)
+        triangles.forEach(t => {
+            dxf += write3DFace(t.p1, t.p2, t.p3, "TIN_MALHA");
+        });
+
+        // 4c. Exportar Curvas de Nível (fatiamento, junção e suavização)
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+        allPoints.forEach(p => {
+            if (p.z < minZ) minZ = p.z;
+            if (p.z > maxZ) maxZ = p.z;
+        });
+
+        if (minZ !== Infinity && maxZ !== -Infinity && Math.abs(maxZ - minZ) > 1e-4) {
+            let equidistance = 1.0;
+            let masterInterval = 5;
+            try {
+                equidistance = parseDoubleRobust(document.getElementById("txt-contour-interval").value);
+                masterInterval = parseInt(document.getElementById("num-master-interval").value) || 5;
+            } catch(e) {}
+
+            const startCota = Math.ceil(minZ / equidistance) * equidistance;
+            const endCota = Math.floor(maxZ / equidistance) * equidistance;
+
+            for (let h = startCota; h <= endCota; h += equidistance) {
+                const isMestra = Math.round(h / equidistance) % masterInterval === 0;
+                const layer = isMestra ? "CURVAS_MESTRAS" : "CURVAS_INTERMEDIARIAS";
+
+                const hSegments = [];
+                triangles.forEach(t => {
+                    const pts = [t.p1, t.p2, t.p3];
+                    const intersects = [];
+
+                    for (let j = 0; j < 3; j++) {
+                        const pA = pts[j];
+                        const pB = pts[(j + 1) % 3];
+
+                        if ((pA.z >= h && pB.z < h) || (pB.z >= h && pA.z < h)) {
+                            const zDiff = pB.z - pA.z;
+                            if (Math.abs(zDiff) > 1e-9) {
+                                const tFactor = (h - pA.z) / zDiff;
+                                const xi = pA.x + tFactor * (pB.x - pA.x);
+                                const yi = pA.y + tFactor * (pB.y - pA.y);
+                                intersects.push({ x: xi, y: yi });
+                            }
+                        }
+                    }
+
+                    if (intersects.length === 2) {
+                        hSegments.push({ p1: intersects[0], p2: intersects[1] });
+                    }
+                });
+
+                const polylines = stitchSegments(hSegments);
+                const smoothedPolylines = polylines.map(line => smoothPolyline(line, 2));
+
+                // Escrever polilinhas 3D no DXF
+                smoothedPolylines.forEach(polyline => {
+                    if (polyline.length < 2) return;
+                    dxf += write3DPolyline(polyline, h, layer);
+
+                    // Adicionar rótulo de cota rotacionado nas curvas mestras
+                    if (isMestra && polyline.length >= 3) {
+                        const midIdx = Math.floor(polyline.length / 2);
+                        const midPt = polyline[midIdx];
+                        
+                        let angleDegrees = 0;
+                        if (midIdx > 0 && midIdx < polyline.length) {
+                            const pPrev = polyline[midIdx - 1];
+                            const pNext = polyline[midIdx];
+                            // Calcula ângulo no plano geodésico
+                            const angleRad = Math.atan2(pNext.y - pPrev.y, pNext.x - pPrev.x);
+                            angleDegrees = angleRad * (180.0 / Math.PI);
+                            
+                            // Ajusta para que o texto nunca fique invertido (-90 a 90 graus)
+                            if (angleDegrees > 90) angleDegrees -= 180;
+                            if (angleDegrees < -90) angleDegrees += 180;
+                        }
+
+                        // Altura do texto proporcional
+                        dxf += writeText(midPt.x, midPt.y, h, h.toFixed(1), 1.0, angleDegrees, "TEXTO_COTAS");
+                    }
+                });
+            }
+        }
+    }
+
+    // Fechar Seção de Entidades e Arquivo
+    dxf += "  0\nENDSEC\n  0\nEOF\n";
+
+    // Forçar download do arquivo .dxf
+    const blob = new Blob([dxf], { type: "application/dxf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `levantamento_${startPoint.name}.dxf`);
     link.style.visibility = "hidden";
     
     document.body.appendChild(link);
